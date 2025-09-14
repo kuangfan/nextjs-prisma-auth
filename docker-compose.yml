@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  # =============================================================================================
+  # MySQL 数据库服务
+  # =============================================================================================
+  mysql:
+    image: mysql:8.0
+    container_name: nextjs-auth-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: nextjs_auth
+      MYSQL_USER: nextjs_user
+      MYSQL_PASSWORD: nextjs_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - nextjs-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # =============================================================================================
+  # Next.js 应用服务
+  # =============================================================================================
+  app:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: nextjs-auth-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://nextjs_user:nextjs_password@mysql:3306/nextjs_auth
+      NEXTAUTH_URL: http://localhost
+      NEXTAUTH_SECRET: your-docker-secret-key-change-this-in-production
+    ports:
+      - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - ./public:/app/public
+      - ./.env:/app/.env:ro
+    networks:
+      - nextjs-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =============================================================================================
+  # Nginx 反向代理服务
+  # =============================================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: nextjs-auth-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - app
+    networks:
+      - nextjs-network
+
+# =============================================================================================
+# 网络配置
+# =============================================================================================
+networks:
+  nextjs-network:
+    driver: bridge
+
+# =============================================================================================
+# 数据卷配置
+# =============================================================================================
+volumes:
+  mysql_data:
+    driver: local
