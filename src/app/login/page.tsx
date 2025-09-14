@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,15 +30,12 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
 
-    if (isLoading) return;
-
     try {
-      console.log("登录数据:", {
+      const result = await signIn("credentials", {
         username: data.username,
         password: data.password,
         redirect: false,
       });
-      const result = { error: "登录失败" };
 
       if (result?.error) {
         setError("root", { message: "用户名或密码错误" });
